@@ -1,5 +1,6 @@
 /** Mayhem Mobile — web. Launcher, screens, WebUSB radio, DSP worker, audio, skins. */
 import { HackRf, HACKRF_FILTERS, isMayhemSerial } from './hackrf.js';
+import { NetworkRadio } from './network-radio.js';
 import { RTLSDR_FILTERS, RTLSDR_READY, RtlSdr, isRtlSdr } from './rtlsdr.js';
 import { APP_NEEDS, blockedBecause, nearestRate, whyNot, type Radio } from './radio.js';
 import type { DmrStatus } from './dsp/ham/dmr.js';
@@ -136,7 +137,7 @@ let logFollow = true;   // stops when the reader scrolls up, resumes at the bott
 let radio: Radio | null = null;
 // Transmit is a HackRF capability and there is no polite way to fake it: a dongle receives only. Handing the
 // transmitter nothing when an RTL-SDR is connected is what makes every send path refuse cleanly.
-const tx = new Tx(() => (radio && radio.kind === 'hackrf' ? radio as HackRf : null));
+const tx = new Tx(() => (radio && radio.kind === 'hackrf' && radio.limits.canTransmit ? radio as HackRf : null));
 let worker: Worker | null = null;
 let audioCtx: AudioContext | null = null;
 let audioPort: MessagePort | null = null;
@@ -1330,7 +1331,7 @@ function render(app: AppId | null): void {
   const header = $('title');
   header.innerHTML = app ? `‹ ${APPS.find(a => a.id === app)!.title.toUpperCase()}` : `MAYHEM<span>MOBILE</span>`;
   $('sub').textContent = app ? APPS.find(a => a.id === app)!.blurb
-    : !radio ? 'HackRF or RTL-SDR · no device'
+    : !radio ? (piBridge ? 'HackRF via Raspberry Pi · receive only' : 'HackRF or RTL-SDR · no device')
     : radio.kind === 'rtlsdr' ? radio.label
     : `HackRF · ${state.board || 'HackRF'}${state.firmware ? ' · ' + state.firmware : ''}`;
   scope = null; sweepScope = null;
@@ -3770,11 +3771,44 @@ function wakeAudio(): void {
   if (audioCtx && audioCtx.state !== 'running') void audioCtx.resume();
 }
 
+function pairingToken(): Promise<string | null> {
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.className = 'pi-pairing';
+    dialog.innerHTML = '<form method="dialog"><h2>Connect to your Pi</h2><p>Enter the pairing token shown in the Pi terminal.</p><label for="pi-pair-token">Pairing token</label><input id="pi-pair-token" name="token" type="password" autocomplete="off" required><div><button class="chip" value="cancel" formnovalidate>Cancel</button><button class="chip primary" value="pair">Connect</button></div></form>';
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      const token = dialog.returnValue === 'pair' ? dialog.querySelector('input')!.value.trim() : null;
+      dialog.remove(); resolve(token || null);
+    }, { once: true });
+    dialog.showModal();
+  });
+}
+
 async function connect(dev?: USBDevice): Promise<void> {
   const btn = $<HTMLButtonElement>('connect');
   if (radio?.running) { radio.stop(); btn.textContent = 'CONNECT'; return; }
   hideHint();                       // a fresh attempt clears a stale hint from the last one
   try {
+    if (piBridge) {
+      if (!window.isSecureContext) throw new Error('Open the Pi through trusted HTTPS to enable audio on your phone');
+      const token = sessionStorage.getItem('pi-token') || await pairingToken();
+      if (!token) return;
+      await ensureAudio();
+      const w = ensureWorker();
+      const r = new NetworkRadio(token, {
+        onIq: buf => w.postMessage({ type: 'iq', buf: buf.buffer }, [buf.buffer]),
+        onLog: log,
+        onStatus: s => { ackTune(s); state.board = r.board; state.firmware = r.firmware; setStatus(s, true); },
+      });
+      r.targetFreqHz = state.freq; r.targetRateHz = nearestRate(r.limits, state.rate); r.setGain(state.lna, state.vga, state.amp);
+      if (r.targetRateHz !== state.rate) { state.rate = r.targetRateHz; w.postMessage({ type: 'config', rate: state.rate }); refreshReadout(); }
+      radio = r; refreshLauncherLimits(); applyLauncherView();
+      try { await r.open(); } catch (e) { sessionStorage.removeItem('pi-token'); throw e; }
+      sessionStorage.setItem('pi-token', token);
+      btn.textContent = 'DISCONNECT';
+      await r.run(); return;
+    }
     // A device this origin was already granted skips the chooser (and works without a click gesture).
     const d = dev ?? await HackRf.remembered() ?? (RTLSDR_READY ? await RtlSdr.remembered() : undefined)
       ?? await navigator.usb.requestDevice({ filters: [...HACKRF_FILTERS, ...(RTLSDR_READY ? RTLSDR_FILTERS : [])] });
@@ -4016,10 +4050,17 @@ function bindDesktop(): void {
 
 // ---- boot -----------------------------------------------------------------------------------------------------
 let versionText = 'dev build', apkUrl = './mayhem.apk', releaseUrl = 'https://github.com/RocketGod-git/mayhem-mobile/releases/tag/latest';
+let piBridge = false;
 
-function init(): void {
+async function init(): Promise<void> {
   loadSkin();
-  const supported = 'usb' in navigator;
+  try { const response = await fetch('/bridge.json', { cache: 'no-store' }); piBridge = response.ok && (await response.json()).protocol === 1; } catch { /* ordinary WebUSB deployment */ }
+  const supported = piBridge || 'usb' in navigator;
+  if (piBridge) {
+    document.title = 'Mayhem Pi';
+    const tag = q('.tag'); if (tag) tag.textContent = 'Raspberry Pi bridge · receive only';
+    setStatus('Connect to the HackRF on your Raspberry Pi', false);
+  }
   $('unsupported').hidden = supported;
   $<HTMLButtonElement>('connect').disabled = !supported;
   if (!supported) setStatus('WebUSB not available in this browser', false);
@@ -4088,7 +4129,7 @@ function init(): void {
   // frequency picker computed its taps against nothing and appeared not to work until you had entered an app
   // and come back.
   open(null);
-  if (supported) {
+  if (supported && !piBridge) {
     // Already granted to this origin: open it without waiting to be asked. WebUSB allows that for a device the
     // user has permitted before, so the receiver is running by the time the page has finished settling.
     (async () => await HackRf.remembered() ?? (RTLSDR_READY ? await RtlSdr.remembered() : undefined))().then(d => {

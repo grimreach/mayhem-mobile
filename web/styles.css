@@ -655,3 +655,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .txin { width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font: inherit; padding: 9px; }
 .grid-tx { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .grid-tx .chip { text-align: center; }
+/* Pairing is an ordinary in-page dialog, supported by mobile Safari and embedded browsers. */
+.pi-pairing { color: #eef3fa; background: #111821; border: 1px solid #526170; border-radius: 12px; max-width: min(440px, 90vw); padding: 24px; }
+.pi-pairing::backdrop { background: #000a; }
+.pi-pairing label, .pi-pairing input { display: block; width: 100%; }
+.pi-pairing input { box-sizing: border-box; margin: 8px 0 20px; padding: 12px; color: #eef3fa; background: #080d14; border: 1px solid #7c8b9a; border-radius: 6px; font-size: 16px; }
+.pi-pairing form > div { display: flex; justify-content: flex-end; gap: 12px; }

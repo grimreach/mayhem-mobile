@@ -1,5 +1,19 @@
 # mayhem-mobile — Mayhem on Android
 
+## Fork projects
+
+This fork separates the new platform work into two project directories:
+
+- **[Mayhem Pi](pi/README.md)** — active development: USB HackRF on a Raspberry Pi,
+  with a browser client for iPhone/iPad over Wi-Fi. Start here.
+- **[Mayhem iPad](ipad/README.md)** — deferred native M-series iPad app and
+  USBDriverKit driver for direct USB.
+
+The existing Android and web sources are retained below. Pi implementation is on
+the `pi-bridge` branch. See [the platform decision](docs/ADR-001-platform-projects.md)
+for scope and trade-offs. These are separate project directories in one fork,
+not separate GitHub repositories yet.
+
 A native Android app (Kotlin + Jetpack Compose) that drives a **HackRF directly over USB-OTG** and does the
 SDR work on the phone: raw 8-bit IQ in, FFT waterfall, WFM / NFM / AM demod to the speaker, Mode-S/ADS-B decode,
 and — over time — ports of the other [PortaPack Mayhem](https://github.com/portapack-mayhem/mayhem-firmware)
