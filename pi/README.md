@@ -5,6 +5,24 @@ Open the Pi's website in Safari on an iPhone or iPad. The Pi owns USB; the brows
 runs the existing receiver DSP, waterfall, and audio. No Apple developer account
 or iOS USB driver is required.
 
+## Owner's hardware
+
+- Raspberry Pi 5 with 4 GB RAM.
+- HackRF Pro with H4M PortaPack.
+- iPhone 15 Pro Max as the initial Safari client; M4 iPad can also use the Pi website.
+
+For this setup, select **HackRF mode** on the PortaPack, then connect the HackRF's
+USB data connection to the Pi with a data-capable cable. The Pi communicates with
+the HackRF radio; this bridge does not control the PortaPack's Mayhem menus or
+screen. No firmware change is part of this prototype.
+
+The shared driver reads the board ID to identify a Pro (the USB product ID is
+shared with the One) and retains upstream's Pro startup/re-tune handling. The Pi
+browser client applies the same Pro gain-preset adjustment as the direct USB
+client. These paths still need verification on this physical Pro/H4M combination.
+Begin with the simulated Wi-Fi test, then use a known local FM station for the
+first hardware reception test.
+
 **Status:** development prototype. Simulated streaming and desktop browser flow
 are tested. Pi USB operation, Wi-Fi performance, and iPhone Safari playback have
 not yet been verified on physical hardware. The native iPad project is separate

@@ -3799,7 +3799,16 @@ async function connect(dev?: USBDevice): Promise<void> {
       const r = new NetworkRadio(token, {
         onIq: buf => w.postMessage({ type: 'iq', buf: buf.buffer }, [buf.buffer]),
         onLog: log,
-        onStatus: s => { ackTune(s); state.board = r.board; state.firmware = r.firmware; setStatus(s, true); },
+        onStatus: s => {
+          ackTune(s);
+          const newBoard = state.board !== r.board;
+          state.board = r.board; state.firmware = r.firmware; setStatus(s, true);
+          if (newBoard && isPro() && !state.gainsScaled) {
+            const [l, v, a] = boardGains(state.lna, state.vga, state.amp);
+            state.gainsScaled = true; setGains(l, v, a);
+            log(`HackRF Pro via Pi: gains scaled to LNA ${l} / VGA ${v}${a ? ' / amp' : ''}`);
+          }
+        },
       });
       r.targetFreqHz = state.freq; r.targetRateHz = nearestRate(r.limits, state.rate); r.setGain(state.lna, state.vga, state.amp);
       if (r.targetRateHz !== state.rate) { state.rate = r.targetRateHz; w.postMessage({ type: 'config', rate: state.rate }); refreshReadout(); }
